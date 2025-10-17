@@ -2,6 +2,13 @@ import { env, SELF, runInDurableObject } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 
 describe('repro', () => {
+	it('should throw concurrently', async () => {
+		const [responseA, responseB] = await Promise.all([SELF.fetch('http://worker/throw'), SELF.fetch('http://worker/throw')]);
+
+		expect(responseA.status).toBe(500);
+		expect(responseB.status).toBe(500);
+	});
+
 	class KVMock {
 		activeWrites = 0;
 		alwaysFail = false;
@@ -21,7 +28,8 @@ describe('repro', () => {
 		}
 	}
 
-	it('should write concurrently to kv', async () => {
+	// this is closer to what we're seeing, but a more minimal example is above
+	it.only('should write concurrently to kv', async () => {
 		const kvMock = new KVMock();
 
 		const id = env.MY_DURABLE_OBJECT.idFromName('foo');
@@ -30,7 +38,7 @@ describe('repro', () => {
 			(instance as any).env.MY_KV_NAMESPACE = kvMock;
 		});
 
-		const [responseA, responseB] = await Promise.all([SELF.fetch('http://worker'), SELF.fetch('http://worker')]);
+		const [responseA, responseB] = await Promise.all([SELF.fetch('http://worker/kv'), SELF.fetch('http://worker/kv')]);
 
 		// one should succeed, the other should fail
 		expect((responseA.status === 200 && responseB.status === 500) || (responseA.status === 500 && responseB.status === 200)).toBe(true);
